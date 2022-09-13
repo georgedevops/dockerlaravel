@@ -1,0 +1,76 @@
+FROM ubuntu:focal
+
+ENV DEBIAN_FRONTEND noninteractive
+ENV TZ "America/New_York"
+ENV CUPSADMIN admin
+ENV CUPSPASSWORD password
+
+RUN apt-get update && \
+    apt-get upgrade -y
+
+RUN apt-get update && \
+    apt-get upgrade -y
+
+RUN apt-get install ca-certificates apt-transport-https software-properties-common -y
+RUN apt-get install apache2 -y
+
+RUN LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
+
+RUN apt-get install php8.1 libapache2-mod-php8.1 -y
+
+RUN apt-get install php8.1-cli php8.1-common php8.1-mysql php8.1-zip php8.1-gd php8.1-mbstring php8.1-curl php8.1-xml php8.1-bcmath -y
+
+RUN apt-get update -qq && apt-get upgrade -qqy && \
+    apt-get install -qqy apt-utils usbutils \
+    cups cups-filters \
+    printer-driver-all \
+    printer-driver-cups-pdf \
+    printer-driver-foo2zjs \
+    foomatic-db-compressed-ppds \
+    openprinting-ppds \
+    hpijs-ppds \
+    hp-ppd \
+    hplip
+
+COPY ./apache2.conf /etc/apache2/apache2.conf
+COPY ./dir.conf /etc/apache2/mods-available/dir.conf
+COPY ./000-default.conf /etc/apache2/sites-available/000-default.conf
+#COPY ./index.php /var/www/html/index.php
+COPY ./app/ /var/www/app/
+
+RUN chgrp -R www-data /var/www/app/
+RUN chmod -R 775 /var/www/app/storage
+RUN apache2ctl configtest
+#RUN apache2ctl configtest
+
+# Baked-in config file changes
+RUN sed -i 's/Listen localhost:631/Listen 0.0.0.0:631/' /etc/cups/cupsd.conf && \
+    sed -i 's/Browsing Off/Browsing On/' /etc/cups/cupsd.conf && \
+    sed -i 's/<Location \/>/<Location \/>\n  Allow All/' /etc/cups/cupsd.conf && \
+    sed -i 's/<Location \/admin>/<Location \/admin>\n  Allow All\n  Require user @SYSTEM/' /etc/cups/cupsd.conf && \
+    sed -i 's/<Location \/admin\/conf>/<Location \/admin\/conf>\n  Allow All/' /etc/cups/cupsd.conf && \
+    echo "ServerAlias *" >> /etc/cups/cupsd.conf && \
+    echo "DefaultEncryption Never" >> /etc/cups/cupsd.conf
+
+COPY ./printer/ /printer
+
+WORKDIR /printer
+
+RUN ./install-printer.sh
+
+WORKDIR /
+
+ADD entrypoint.sh /
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 80 631
+#CMD apachectl -D FOREGROUND; /entrypoint.sh
+CMD ["/entrypoint.sh"]
+
+#/var/www/html
+#/etc/apache2/apache2.conf
+#docker cp abc:/etc/apache2/apache2.conf .
+#/etc/apache2/mods-available/dir.conf
+#/etc/apache2/sites-enabled/000-default.conf
+#docker cp abc:/etc/apache2/mods-available/dir.conf .
+#docker cp 829:/etc/apache2/sites-available/000-default.conf .
